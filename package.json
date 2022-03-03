@@ -12,7 +12,7 @@
     "start-server": "cd ../nexteditor-yjs-server && PORT=1234 node ./index.js",
     "start-client": "vite",
     "dev": "npm-run-all --parallel start-server start-client",
-    "build": "tsc && vite build && tsc --emitDeclarationOnly"
+    "build": "vite build && tsc --emitDeclarationOnly"
   },
   "dependencies": {
     "@nexteditorjs/nexteditor-core": "^0.0.1",
