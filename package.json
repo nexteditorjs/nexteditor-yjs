@@ -15,11 +15,11 @@
     "build": "vite build && tsc --emitDeclarationOnly"
   },
   "dependencies": {
-    "@nexteditorjs/nexteditor-core": "^0.0.1",
+    "@nexteditorjs/nexteditor-core": "0.0.2",
     "yjs": "^13.5.27"
   },
   "devDependencies": {
-    "@nexteditorjs/nexteditor-table-block": "^0.0.0",
+    "@nexteditorjs/nexteditor-table-block": "^0.0.2",
     "npm-run-all": "^4.1.5",
     "typescript": "^4.5.4",
     "vite": "^2.8.0",
