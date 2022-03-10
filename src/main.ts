@@ -9,7 +9,7 @@ import YjsDoc from './yjs-doc/yjs-doc';
 const yDoc = new Y.Doc();
 
 // Sync clients with the y-websocket provider
-const websocketProvider = new WebsocketProvider('ws://localhost:4000', 'yjs-demo-1', yDoc);
+const websocketProvider = new WebsocketProvider('ws://localhost:4000', 'yjs-demo-2', yDoc);
 
 editorBlocks.registerComplexBlockClass(TableBlock);
 

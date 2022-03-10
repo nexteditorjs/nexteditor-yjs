@@ -1,14 +1,14 @@
 import * as Y from 'yjs';
-import { DocBlock, DocBlockText, NextEditorDoc, NextEditorDocCallbacks, assert, DocBlockTextActions, DocObject } from '@nexteditorjs/nexteditor-core';
+import { DocBlock, DocBlockText, NextEditorDoc, NextEditorDocCallbacks, assert, DocBlockTextActions, DocObject, DocBlockDelta } from '@nexteditorjs/nexteditor-core';
 
-export type YjsDocData = {
-  blocks: DocBlock[];
-} & {
-  [index: string]: DocBlock[];
-};
+type MetaType = Y.Map<unknown>;
+type BlockDataType = Y.Map<unknown>;
+type BlocksType = Y.Array<BlockDataType>;
+type AllBlocksType = Y.Map<BlocksType>;
+type DocType = Y.Map<MetaType | AllBlocksType>;
 
 export default class YjsDoc implements NextEditorDoc {
-  doc: Y.Map<string>;
+  doc: DocType;
 
   callbacks: NextEditorDocCallbacks | null = null;
 
@@ -23,18 +23,23 @@ export default class YjsDoc implements NextEditorDoc {
     } = {};
 
     Array.from(this.doc.entries()).forEach(([key, value]) => {
-      if (key === 'meta' || key === 'comments') {
+      if (key === 'meta') {
         obj[key] = value.toJSON();
-      } else {
+      } else if (key === 'blocks') {
         //
-        const arr: DocBlock[] = [];
-        // value.isArray();
-        assert(value instanceof Y.Array);
-        value.forEach((v) => {
-          arr.push(this.mapToBlockData(v));
+        obj.blocks = {};
+        const allBlocks = value as AllBlocksType;
+        Array.from(allBlocks.entries()).forEach(([containerId, containerBlocks]) => {
+          const arr: DocBlock[] = [];
+          assert(containerBlocks instanceof Y.Array);
+          containerBlocks.forEach((v) => {
+            arr.push(this.mapToBlockData(v));
+          });
+          //
+          obj.blocks[containerId] = arr;
         });
-        //
-        obj[key] = arr;
+      } else {
+        assert(false, `unknown root object in doc: ${key}`);
       }
     });
     //
@@ -45,7 +50,7 @@ export default class YjsDoc implements NextEditorDoc {
     this.callbacks = callbacks;
   }
 
-  private handleDocUpdated = (events: Y.YEvent[], transaction: Y.Transaction) => {
+  private handleDocUpdated = (events: Y.YEvent<Y.Array<unknown> | Y.Text>[], transaction: Y.Transaction) => {
     assert(this.callbacks, 'no callbacks registered');
     events.forEach((e) => {
       if (e instanceof Y.YTextEvent) {
@@ -61,8 +66,9 @@ export default class YjsDoc implements NextEditorDoc {
   private handleBlockTextChanged = (event: Y.YTextEvent, transaction: Y.Transaction) => {
     assert(this.callbacks, 'no callbacks registered');
     const path = event.path;
-    assert(path.length === 3, 'invalid text event path');
-    const [containerId, blockIndex, textKey] = path;
+    assert(path.length === 4, 'invalid text event path');
+    const [allBlocksKey, containerId, blockIndex, textKey] = path;
+    assert(allBlocksKey === 'blocks', 'invalid block text change path');
     assert(typeof containerId === 'string', 'invalid text event container');
     assert(typeof blockIndex === 'number', 'invalid text event block index');
     assert(textKey === 'text', 'invalid text event target');
@@ -75,8 +81,9 @@ export default class YjsDoc implements NextEditorDoc {
     //
     assert(this.callbacks, 'no callbacks registered');
     const path = event.path;
-    assert(path.length === 1, 'invalid container event path');
-    const [containerId] = path;
+    assert(path.length === 2, 'invalid container event path');
+    const [allBlocksKey, containerId] = path;
+    assert(allBlocksKey === 'blocks', 'invalid block text change path');
     assert(typeof containerId === 'string', 'invalid text event container');
     const delta = event.delta;
     let blockIndex = 0;
@@ -101,16 +108,16 @@ export default class YjsDoc implements NextEditorDoc {
     }
   };
 
-  private mapToBlockData(map: Y.Map<unknown>): DocBlock {
+  private mapToBlockData(map: BlockDataType): DocBlock {
     const json = map.toJSON();
     if (map.has('text')) {
       const blockText = map.get('text') as unknown as Y.Text;
       json.text = blockText.toDelta();
     }
-    return json;
+    return json as DocBlock;
   }
 
-  private blockDataToMap(data: DocBlock): Y.Map<unknown> {
+  private blockDataToMap(data: DocBlock): BlockDataType {
     //
     const d = JSON.parse(JSON.stringify(data)) as DocBlock;
     const text = d.text;
@@ -126,25 +133,37 @@ export default class YjsDoc implements NextEditorDoc {
     return map;
   }
 
+  private getAllBlocksMap(): AllBlocksType {
+    const blocksMap = this.doc.get('blocks');
+    assert(blocksMap, 'no blocks map');
+    return blocksMap as AllBlocksType;
+  }
+
+  private getContainerBlocksMap(containerId: string): BlocksType {
+    const blocks = this.getAllBlocksMap().get(containerId);
+    assert(blocks, `no container: ${containerId}`);
+    return blocks;
+  }
+
   getContainerBlocks(containerId: string): DocBlock[] {
-    const blocksData = this.doc.get(containerId) as unknown as Y.Array<Y.Map<unknown>>;
-    const blocks = blocksData.map((b) => this.mapToBlockData(b as unknown as Y.Map<unknown>));
+    const blocksData = this.getContainerBlocksMap(containerId);
+    const blocks = blocksData.map((b) => this.mapToBlockData(b));
     return blocks;
   }
 
   getBlockData(containerId: string, blockIndex: number): DocBlock {
-    const blocksData = this.doc.get(containerId) as unknown as Y.Array<Y.Map<unknown>>;
-    const blockData = blocksData.get(blockIndex) as unknown as Y.Map<unknown>;
+    const blocksData = this.getContainerBlocksMap(containerId);
+    const blockData = blocksData.get(blockIndex);
     assert(blockData, `no block data: ${blockIndex}`);
     const json = blockData.toJSON();
     const blockText = blockData.get('text') as unknown as Y.Text;
     json.text = blockText.toDelta();
-    return json;
+    return json as DocBlock;
   }
 
   localUpdateBlockText(containerId: string, blockIndex: number, deltaOps: DocBlockTextActions): DocBlockText {
-    const blocksData = this.doc.get(containerId) as unknown as Y.Array<Y.Map<unknown>>;
-    const blockData = blocksData.get(blockIndex) as unknown as Y.Map<unknown>;
+    const blocksData = this.getContainerBlocksMap(containerId);
+    const blockData = blocksData.get(blockIndex);
     assert(blockData, `no block data: ${blockIndex}`);
     const oldText = blockData.get('text') as unknown as Y.Text;
     oldText.applyDelta(deltaOps);
@@ -152,17 +171,29 @@ export default class YjsDoc implements NextEditorDoc {
   }
 
   localInsertBlock(containerId: string, blockIndex: number, data: DocBlock): DocBlock {
-    const blocksData = this.doc.get(containerId) as unknown as Y.Array<Y.Map<unknown>>;
+    const blocksData = this.getContainerBlocksMap(containerId);
     const obj = this.blockDataToMap(data);
     blocksData.insert(blockIndex, [obj]);
     return data;
   }
 
   localDeleteBlock(containerId: string, blockIndex: number): DocBlock {
-    const blocksData = this.doc.get(containerId) as unknown as Y.Array<Y.Map<unknown>>;
+    const blocksData = this.getContainerBlocksMap(containerId);
     const data = blocksData.get(blockIndex);
     const obj = this.mapToBlockData(data);
     blocksData.delete(blockIndex);
     return obj;
+  }
+
+  localUpdateBlockData(containerId: string, blockIndex: number, delta: DocBlockDelta): DocBlock {
+    const oldBlockData = this.getBlockData(containerId, blockIndex);
+    return oldBlockData;
+  }
+
+  localInsertChildContainer(containerId: string, blocks: DocBlock[]): void {
+  }
+
+  localDeleteChildContainers(containerIds: string[]): void {
+
   }
 }
