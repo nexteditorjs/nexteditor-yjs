@@ -15,7 +15,8 @@
     "build": "vite build && tsc --emitDeclarationOnly"
   },
   "dependencies": {
-    "@nexteditorjs/nexteditor-core": "0.0.2",
+    "@nexteditorjs/nexteditor-core": "0.0.20",
+    "@nexteditorjs/nexteditor-input-handlers": "0.0.20",
     "yjs": "^13.5.27"
   },
   "devDependencies": {
