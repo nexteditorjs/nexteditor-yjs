@@ -10,7 +10,7 @@ import YjsDoc from './yjs-doc/yjs-doc';
 const yDoc = new Y.Doc();
 
 // Sync clients with the y-websocket provider
-const websocketProvider = new WebsocketProvider('ws://localhost:4000', 'yjs-demo-3', yDoc);
+const websocketProvider = new WebsocketProvider('ws://localhost:4000', 'yjs-demo-11', yDoc);
 
 const app = document.querySelector<HTMLDivElement>('#app');
 assert(app, 'app does not exists');
