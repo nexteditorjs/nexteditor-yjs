@@ -2,7 +2,7 @@
 import * as Y from 'yjs';
 import { assert, createEditor } from '@nexteditorjs/nexteditor-core';
 import TableBlock from '@nexteditorjs/nexteditor-table-block';
-import { MarkdownInputHandler } from '@nexteditorjs/nexteditor-input-handlers';
+import { EnforceWithDocumentTitleHandler, MarkdownInputHandler } from '@nexteditorjs/nexteditor-input-handlers';
 import { WebsocketProvider } from 'y-websocket';
 import './style.css';
 import YjsDoc from './yjs-doc/yjs-doc';
@@ -27,6 +27,11 @@ yDoc.on('update', (update: any, origin: any, doc: any) => {
       },
     });
     editor.input.addHandler(new MarkdownInputHandler());
+    editor.input.addHandler(new EnforceWithDocumentTitleHandler(editor, {
+      headingLevel: 1,
+      titlePlaceholder: 'Yjs demo',
+      contentPlaceholder: 'Enter some text...',
+    }));
     (window as any).editor = editor;
   }
 });
