@@ -3,12 +3,18 @@ import {
   DocBlock, DocBlockText, NextEditorDoc, NextEditorDocCallbacks,
   assert, DocBlockTextActions, DocObject, DocBlockDelta,
 } from '@nexteditorjs/nexteditor-core';
+import { WebsocketProvider } from 'y-websocket';
 
 type MetaType = Y.Map<unknown>;
 type BlockDataType = Y.Map<unknown>;
 type BlocksType = Y.Array<BlockDataType>;
 type AllBlocksType = Y.Map<BlocksType>;
 type DocType = Y.Map<MetaType | AllBlocksType>; // DocObject
+
+export interface YjsOptions {
+  server: string;
+  documentId: string;
+}
 
 export default class YjsDoc implements NextEditorDoc {
   doc: DocType;
@@ -54,6 +60,30 @@ export default class YjsDoc implements NextEditorDoc {
 
   registerCallbacks(callbacks: NextEditorDocCallbacks): void {
     this.callbacks = callbacks;
+  }
+
+  static load(options: YjsOptions): Promise<YjsDoc> {
+    return new Promise((resolve, reject) => {
+      const yDoc = new Y.Doc();
+
+      // Sync clients with the y-websocket provider
+      const websocketProvider = new WebsocketProvider(options.server, options.documentId, yDoc);
+      let loaded = false;
+      yDoc.on('update', (update: any, origin: any, doc: any) => {
+        if (!loaded) {
+          loaded = true;
+          resolve(new YjsDoc(yDoc));
+        }
+      });
+
+      websocketProvider.on('status', (event: any) => {
+        if (event.status === 'connected') {
+          console.log('connected', yDoc);
+        } else if (event.status === 'disconnected') {
+          console.log('disconnected');
+        }
+      });
+    });
   }
 
   private handleDocUpdated = (events: Y.YEvent<Y.Array<unknown> | Y.Text>[], transaction: Y.Transaction) => {
