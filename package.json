@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@nexteditorjs/nexteditor-core": "0.0.21",
-    "yjs": "^13.5.27"
+    "yjs": "^13.5.28"
   },
   "devDependencies": {
     "@nexteditorjs/nexteditor-table-block": "^0.0.21",
