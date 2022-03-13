@@ -16,7 +16,7 @@
     "dist": "vite build && tsc --emitDeclarationOnly --project tsconfig.dist.json"
   },
   "dependencies": {
-    "@nexteditorjs/nexteditor-core": "0.0.21",
+    "@nexteditorjs/nexteditor-core": "^0.0.21",
     "yjs": "^13.5.28",
     "y-websocket": "^1.3.18"
   },
