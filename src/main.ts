@@ -4,13 +4,19 @@ import TableBlock from '@nexteditorjs/nexteditor-table-block';
 import { EnforceWithDocumentTitleHandler, MarkdownInputHandler } from '@nexteditorjs/nexteditor-input-handlers';
 import './style.css';
 import YjsDoc from './yjs-doc/yjs-doc';
+import { ErrorType } from './yjs-doc/options';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 assert(app, 'app does not exists');
 
+const handleDocError = (type: ErrorType, error: unknown) => {
+  console.error(`${type} error, ${error}`);
+};
+
 YjsDoc.load({
   server: 'ws://localhost:4000',
   documentId: 'yjs-demo-11',
+  onDocError: handleDocError,
 }).then((doc) => {
   const editor = createEditor(app, doc, {
     components: {

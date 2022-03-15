@@ -4,6 +4,7 @@ import {
   assert, DocBlockTextActions, DocObject, DocBlockDelta,
 } from '@nexteditorjs/nexteditor-core';
 import { WebsocketProvider } from 'y-websocket';
+import { YjsDocOptions } from './options';
 
 type MetaType = Y.Map<unknown>;
 type BlockDataType = Y.Map<unknown>;
@@ -11,19 +12,18 @@ type BlocksType = Y.Array<BlockDataType>;
 type AllBlocksType = Y.Map<BlocksType>;
 type DocType = Y.Map<MetaType | AllBlocksType>; // DocObject
 
-export interface YjsOptions {
-  server: string;
-  documentId: string;
-}
-
 export default class YjsDoc implements NextEditorDoc {
   doc: DocType;
 
   callbacks: NextEditorDocCallbacks | null = null;
 
-  constructor(private yDoc: Y.Doc) {
+  constructor(private yDoc: Y.Doc, private websocket: WebsocketProvider, private options: YjsDocOptions) {
     this.doc = this.yDoc.getMap('doc');
     this.doc.observeDeep(this.handleDocUpdated);
+    //
+    assert(websocket.ws, 'no websocket');
+    // eslint-disable-next-line no-param-reassign
+    websocket.ws.onerror = this.handleWebSocketError;
   }
 
   toJSON(): DocObject {
@@ -62,29 +62,45 @@ export default class YjsDoc implements NextEditorDoc {
     this.callbacks = callbacks;
   }
 
-  static load(options: YjsOptions): Promise<YjsDoc> {
+  static load(options: YjsDocOptions): Promise<YjsDoc> {
     return new Promise((resolve, reject) => {
       const yDoc = new Y.Doc();
 
       // Sync clients with the y-websocket provider
-      const websocketProvider = new WebsocketProvider(options.server, options.documentId, yDoc);
-      let loaded = false;
-      yDoc.on('update', (update: any, origin: any, doc: any) => {
-        if (!loaded) {
-          loaded = true;
-          resolve(new YjsDoc(yDoc));
-        }
-      });
+      try {
+        const websocketProvider = new WebsocketProvider(options.server, options.documentId, yDoc);
+        let loaded = false;
+        yDoc.on('update', (update, origin, doc) => {
+          if (!loaded) {
+            loaded = true;
+            resolve(new YjsDoc(yDoc, websocketProvider, options));
+          }
+        });
 
-      websocketProvider.on('status', (event: any) => {
-        if (event.status === 'connected') {
-          console.log('connected', yDoc);
-        } else if (event.status === 'disconnected') {
-          console.log('disconnected');
-        }
-      });
+        // not working
+        websocketProvider.on('status', (event: any) => {
+          if (event.status === 'connecting') {
+            assert(websocketProvider.ws);
+            websocketProvider.ws.onerror = (err) => {
+              options.onDocError('WebSocket', err);
+            };
+          } else if (event.status === 'connected') {
+            console.log('connected', yDoc);
+          } else if (event.status === 'disconnected') {
+            console.log('disconnected');
+          } else {
+            console.error(`unknown status: ${event.status}`);
+          }
+        });
+      } catch (err) {
+        options.onDocError('WebSocket', err);
+      }
     });
   }
+
+  handleWebSocketError = (error: Event) => {
+    this.options.onDocError('WebSocket', error);
+  };
 
   private handleDocUpdated = (events: Y.YEvent<Y.Array<unknown> | Y.Text>[], transaction: Y.Transaction) => {
     assert(this.callbacks, 'no callbacks registered');
@@ -336,5 +352,11 @@ export default class YjsDoc implements NextEditorDoc {
       assert(allBlocksMap.has(containerId), `child container has already exists: ${containerId}`);
       allBlocksMap.delete(containerId);
     });
+  }
+
+  destroy(): void {
+    this.callbacks = null;
+    this.doc.unobserveDeep(this.handleDocUpdated);
+    this.websocket.destroy();
   }
 }
