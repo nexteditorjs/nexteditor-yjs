@@ -1,7 +1,7 @@
 import * as Y from 'yjs';
 import {
   DocBlock, DocBlockText, NextEditorDoc, NextEditorDocCallbacks,
-  assert, DocBlockTextActions, DocObject, DocBlockDelta,
+  assert, DocBlockTextActions, DocObject, DocBlockDelta, EventCallbacks,
 } from '@nexteditorjs/nexteditor-core';
 import { WebsocketProvider } from 'y-websocket';
 import { YjsDocOptions } from './options';
@@ -12,12 +12,11 @@ type BlocksType = Y.Array<BlockDataType>;
 type AllBlocksType = Y.Map<BlocksType>;
 type DocType = Y.Map<MetaType | AllBlocksType>; // DocObject
 
-export default class YjsDoc implements NextEditorDoc {
+export default class YjsDoc extends EventCallbacks<NextEditorDocCallbacks> implements NextEditorDoc {
   doc: DocType;
 
-  callbacks: NextEditorDocCallbacks | null = null;
-
   constructor(private yDoc: Y.Doc, private websocket: WebsocketProvider, private options: YjsDocOptions) {
+    super();
     this.doc = this.yDoc.getMap('doc');
     this.doc.observeDeep(this.handleDocUpdated);
     //
@@ -56,10 +55,6 @@ export default class YjsDoc implements NextEditorDoc {
     });
     //
     return obj as DocObject;
-  }
-
-  registerCallbacks(callbacks: NextEditorDocCallbacks): void {
-    this.callbacks = callbacks;
   }
 
   static load(options: YjsDocOptions): Promise<YjsDoc> {
@@ -132,7 +127,7 @@ export default class YjsDoc implements NextEditorDoc {
     assert(textKey === 'text', 'invalid text event target');
     const delta = event.delta;
     assert(delta, 'no delta of text event');
-    if (this.callbacks.onUpdateBlockText) this.callbacks.onUpdateBlockText(containerId, blockIndex, delta as DocBlockText, transaction.local);
+    this.callbacks.forEach((cb) => cb.onUpdateBlockText?.(containerId, blockIndex, delta as DocBlockText, transaction.local));
   };
 
   private handleBlockDataChanged = (event: Y.YMapEvent<BlockDataType>, transaction: Y.Transaction) => {
@@ -163,7 +158,7 @@ export default class YjsDoc implements NextEditorDoc {
     });
     //
     assert(this.callbacks, 'no callbacks registered');
-    if (this.callbacks.onUpdateBlockData) this.callbacks.onUpdateBlockData(containerId, blockIndex, delta, transaction.local);
+    this.callbacks.forEach((cb) => cb.onUpdateBlockData?.(containerId, blockIndex, delta, transaction.local));
   };
 
   private handleBlocksChanged = (event: Y.YArrayEvent<Y.Map<unknown>>, transaction: Y.Transaction) => {
@@ -185,13 +180,14 @@ export default class YjsDoc implements NextEditorDoc {
         const insertedBlocks = op.insert as Y.Array<Y.Map<unknown>>;
         // eslint-disable-next-line no-restricted-syntax
         for (const b of insertedBlocks) {
-          if (this.callbacks.onInsertBlock) this.callbacks.onInsertBlock(containerId, blockIndex, this.mapToBlockData(b), transaction.local);
+          // eslint-disable-next-line @typescript-eslint/no-loop-func
+          this.callbacks.forEach((cb) => cb.onInsertBlock?.(containerId, blockIndex, this.mapToBlockData(b), transaction.local));
         }
       }
       if (op.delete) {
         for (let deletedIndex = op.delete - 1; deletedIndex >= 0; deletedIndex--) {
           const deleteBlockIndex = blockIndex + deletedIndex;
-          if (this.callbacks.onDeleteBlock) this.callbacks.onDeleteBlock(containerId, deleteBlockIndex, transaction.local);
+          this.callbacks.forEach((cb) => cb.onDeleteBlock?.(containerId, deleteBlockIndex, transaction.local));
         }
       }
     }
@@ -202,11 +198,11 @@ export default class YjsDoc implements NextEditorDoc {
       assert(this.callbacks, 'no callbacks registered');
       if (change.action === 'add') {
         const blocks = this.getContainerBlocks(key);
-        if (this.callbacks.onInsertChildContainer) this.callbacks.onInsertChildContainer(key, blocks, transaction.local);
+        this.callbacks.forEach((cb) => cb.onInsertChildContainer?.(key, blocks, transaction.local));
       } else if (change.action === 'update') {
         assert(false, 'should not update container data');
       } else if (change.action === 'delete') {
-        if (this.callbacks.onDeleteChildContainer) this.callbacks.onDeleteChildContainer(key, transaction.local);
+        this.callbacks.forEach((cb) => cb.onDeleteChildContainer?.(key, transaction.local));
       }
     });
   }
@@ -355,7 +351,7 @@ export default class YjsDoc implements NextEditorDoc {
   }
 
   destroy(): void {
-    this.callbacks = null;
+    this.clearCallbacks();
     this.doc.unobserveDeep(this.handleDocUpdated);
     this.websocket.destroy();
   }
