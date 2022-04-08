@@ -1,6 +1,7 @@
 /* eslint-disable import/no-extraneous-dependencies */
 import { assert, createEditor } from '@nexteditorjs/nexteditor-core';
 import TableBlock from '@nexteditorjs/nexteditor-table-block';
+import ListBlock from '@nexteditorjs/nexteditor-list-block';
 import { EnforceWithDocumentTitleHandler, MarkdownInputHandler } from '@nexteditorjs/nexteditor-input-handlers';
 import './style.css';
 import YjsDoc from './yjs-doc/yjs-doc';
@@ -20,7 +21,7 @@ YjsDoc.load({
 }).then((doc) => {
   const editor = createEditor(app, doc, {
     components: {
-      blocks: [TableBlock],
+      blocks: [TableBlock, ListBlock],
     },
   });
   editor.input.addHandler(new MarkdownInputHandler());
