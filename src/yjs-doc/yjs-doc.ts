@@ -1,10 +1,12 @@
 import * as Y from 'yjs';
 import {
   DocBlock, DocBlockText, NextEditorDoc, NextEditorDocCallbacks,
-  assert, DocBlockTextActions, DocObject, DocBlockDelta, EventCallbacks,
+  assert, DocBlockTextActions, DocObject, DocBlockDelta, EventCallbacks, getLogger,
 } from '@nexteditorjs/nexteditor-core';
 import { WebsocketProvider } from 'y-websocket';
 import { YjsDocOptions } from './options';
+
+const logger = getLogger('yjs-doc');
 
 type MetaType = Y.Map<unknown>;
 type BlockDataType = Y.Map<unknown>;
@@ -20,7 +22,7 @@ export default class YjsDoc extends EventCallbacks<NextEditorDocCallbacks> imple
     this.doc = this.yDoc.getMap('doc');
     this.doc.observeDeep(this.handleDocUpdated);
     //
-    assert(websocket.ws, 'no websocket');
+    assert(logger, websocket.ws, 'no websocket');
     // eslint-disable-next-line no-param-reassign
     websocket.ws.onerror = this.handleWebSocketError;
   }
@@ -42,7 +44,7 @@ export default class YjsDoc extends EventCallbacks<NextEditorDocCallbacks> imple
         const allBlocks = value as AllBlocksType;
         Array.from(allBlocks.entries()).forEach(([containerId, containerBlocks]) => {
           const arr: DocBlock[] = [];
-          assert(containerBlocks instanceof Y.Array);
+          assert(logger, containerBlocks instanceof Y.Array, `invalid container blocks type: ${typeof containerBlocks}`);
           containerBlocks.forEach((v) => {
             arr.push(this.mapToBlockData(v));
           });
@@ -50,7 +52,7 @@ export default class YjsDoc extends EventCallbacks<NextEditorDocCallbacks> imple
           obj.blocks[containerId] = arr;
         });
       } else {
-        assert(false, `unknown root object in doc: ${key}`);
+        assert(logger, false, `unknown root object in doc: ${key}`);
       }
     });
     //
@@ -75,16 +77,16 @@ export default class YjsDoc extends EventCallbacks<NextEditorDocCallbacks> imple
         // not working
         websocketProvider.on('status', (event: any) => {
           if (event.status === 'connecting') {
-            assert(websocketProvider.ws);
+            assert(logger, websocketProvider.ws, 'no websocket');
             websocketProvider.ws.onerror = (err) => {
               options.onDocError('WebSocket', err);
             };
           } else if (event.status === 'connected') {
-            console.log('connected', yDoc);
+            logger.debug('connected');
           } else if (event.status === 'disconnected') {
-            console.log('disconnected');
+            logger.debug('disconnected');
           } else {
-            console.error(`unknown status: ${event.status}`);
+            logger.error(`unknown status: ${event.status}`);
           }
         });
       } catch (err) {
@@ -98,7 +100,7 @@ export default class YjsDoc extends EventCallbacks<NextEditorDocCallbacks> imple
   };
 
   private handleDocUpdated = (events: Y.YEvent<Y.Array<unknown> | Y.Text>[], transaction: Y.Transaction) => {
-    assert(this.callbacks, 'no callbacks registered');
+    assert(logger, this.callbacks, 'no callbacks registered');
     events.forEach((e) => {
       if (e instanceof Y.YTextEvent) {
         this.handleBlockTextChanged(e, transaction);
@@ -110,23 +112,23 @@ export default class YjsDoc extends EventCallbacks<NextEditorDocCallbacks> imple
         } else if (e.path.length === 3) {
           this.handleBlockDataChanged(e, transaction);
         } else {
-          assert(false, `unknown event ${e.path}`);
+          assert(logger, false, `unknown event ${e.path}`);
         }
       }
     });
   };
 
   private handleBlockTextChanged = (event: Y.YTextEvent, transaction: Y.Transaction) => {
-    assert(this.callbacks, 'no callbacks registered');
+    assert(logger, this.callbacks, 'no callbacks registered');
     const path = event.path;
-    assert(path.length === 4, 'invalid text event path');
+    assert(logger, path.length === 4, 'invalid text event path');
     const [allBlocksKey, containerId, blockIndex, textKey] = path;
-    assert(allBlocksKey === 'blocks', 'invalid block text change path');
-    assert(typeof containerId === 'string', 'invalid text event container');
-    assert(typeof blockIndex === 'number', 'invalid text event block index');
-    assert(textKey === 'text', 'invalid text event target');
+    assert(logger, allBlocksKey === 'blocks', 'invalid block text change path');
+    assert(logger, typeof containerId === 'string', 'invalid text event container');
+    assert(logger, typeof blockIndex === 'number', 'invalid text event block index');
+    assert(logger, textKey === 'text', 'invalid text event target');
     const delta = event.delta;
-    assert(delta, 'no delta of text event');
+    assert(logger, delta, 'no delta of text event');
     this.callbacks.forEach((cb) => cb.onUpdateBlockText?.(containerId, blockIndex, delta as DocBlockText, transaction.local));
   };
 
@@ -139,36 +141,36 @@ export default class YjsDoc extends EventCallbacks<NextEditorDocCallbacks> imple
     //
     const path = event.path;
     const [allBlocks, containerId, blockIndex] = path;
-    assert(allBlocks === 'blocks', `invalid event path: ${path}`);
-    assert(typeof containerId === 'string', `invalid event path: ${path}`);
-    assert(typeof blockIndex === 'number', `invalid event path: ${path}`);
+    assert(logger, allBlocks === 'blocks', `invalid event path: ${path}`);
+    assert(logger, typeof containerId === 'string', `invalid event path: ${path}`);
+    assert(logger, typeof blockIndex === 'number', `invalid event path: ${path}`);
 
     event.changes.keys.forEach((change, key) => {
       const blockData = this.getBlockData(containerId, blockIndex);
       if (change.action === 'add') {
         delta.insert[key] = blockData[key];
-        assert(delta.insert[key] !== undefined, `no data after update: ${key}, ${JSON.stringify(blockData)}`);
+        assert(logger, delta.insert[key] !== undefined, `no data after update: ${key}, ${JSON.stringify(blockData)}`);
       } else if (change.action === 'update') {
         delta.delete.push(key);
         delta.insert[key] = blockData[key];
-        assert(delta.insert[key] !== undefined, `no data after update: ${key}, ${JSON.stringify(blockData)}`);
+        assert(logger, delta.insert[key] !== undefined, `no data after update: ${key}, ${JSON.stringify(blockData)}`);
       } else if (change.action === 'delete') {
         delta.delete.push(key);
       }
     });
     //
-    assert(this.callbacks, 'no callbacks registered');
+    assert(logger, this.callbacks, 'no callbacks registered');
     this.callbacks.forEach((cb) => cb.onUpdateBlockData?.(containerId, blockIndex, delta, transaction.local));
   };
 
   private handleBlocksChanged = (event: Y.YArrayEvent<Y.Map<unknown>>, transaction: Y.Transaction) => {
     //
-    assert(this.callbacks, 'no callbacks registered');
+    assert(logger, this.callbacks, 'no callbacks registered');
     const path = event.path;
-    assert(path.length === 2, 'invalid container event path');
+    assert(logger, path.length === 2, 'invalid container event path');
     const [allBlocksKey, containerId] = path;
-    assert(allBlocksKey === 'blocks', 'invalid block text change path');
-    assert(typeof containerId === 'string', 'invalid text event container');
+    assert(logger, allBlocksKey === 'blocks', 'invalid block text change path');
+    assert(logger, typeof containerId === 'string', 'invalid text event container');
     const delta = event.delta;
     let blockIndex = 0;
     for (let i = 0; i < delta.length; i++) {
@@ -195,12 +197,12 @@ export default class YjsDoc extends EventCallbacks<NextEditorDocCallbacks> imple
 
   handleChildContainerChanged(event: Y.YMapEvent<BlocksType>, transaction: Y.Transaction) {
     event.changes.keys.forEach((change, key) => {
-      assert(this.callbacks, 'no callbacks registered');
+      assert(logger, this.callbacks, 'no callbacks registered');
       if (change.action === 'add') {
         const blocks = this.getContainerBlocks(key);
         this.callbacks.forEach((cb) => cb.onInsertChildContainer?.(key, blocks, transaction.local));
       } else if (change.action === 'update') {
-        assert(false, 'should not update container data');
+        assert(logger, false, 'should not update container data');
       } else if (change.action === 'delete') {
         this.callbacks.forEach((cb) => cb.onDeleteChildContainer?.(key, transaction.local));
       }
@@ -211,7 +213,7 @@ export default class YjsDoc extends EventCallbacks<NextEditorDocCallbacks> imple
     const json = map.toJSON();
     if (map.has('text')) {
       const blockText = map.get('text') as unknown as Y.Text;
-      assert(blockText instanceof Y.Text, `invalid text type, ${typeof blockText}`);
+      assert(logger, blockText instanceof Y.Text, `invalid text type, ${typeof blockText}`);
       json.text = blockText.toDelta();
     }
     return json as DocBlock;
@@ -240,19 +242,19 @@ export default class YjsDoc extends EventCallbacks<NextEditorDocCallbacks> imple
 
   private getAllBlocksMap(): AllBlocksType {
     const blocksMap = this.doc.get('blocks');
-    assert(blocksMap, 'no blocks map');
+    assert(logger, blocksMap, 'no blocks map');
     return blocksMap as AllBlocksType;
   }
 
   private getContainerBlocksMap(containerId: string): BlocksType {
     const blocks = this.getAllBlocksMap().get(containerId);
-    assert(blocks, `no container: ${containerId}`);
+    assert(logger, blocks, `no container: ${containerId}`);
     return blocks;
   }
 
   private getBlockMap(containerId: string, blockIndex: number): BlockDataType {
     const block = this.getContainerBlocksMap(containerId).get(blockIndex);
-    assert(block, `no block in container: ${containerId}, ${blockIndex}`);
+    assert(logger, block, `no block in container: ${containerId}, ${blockIndex}`);
     return block;
   }
 
@@ -264,11 +266,11 @@ export default class YjsDoc extends EventCallbacks<NextEditorDocCallbacks> imple
   getBlockData(containerId: string, blockIndex: number): DocBlock {
     const blocksData = this.getContainerBlocksMap(containerId);
     const blockData = blocksData.get(blockIndex);
-    assert(blockData, `no block data: ${blockIndex}`);
+    assert(logger, blockData, `no block data: ${blockIndex}`);
     const json = blockData.toJSON();
     const blockText = blockData.get('text') as unknown as Y.Text;
     if (blockText) {
-      assert(blockText instanceof Y.Text, `invalid block text type: ${JSON.stringify(blockText)}`);
+      assert(logger, blockText instanceof Y.Text, `invalid block text type: ${JSON.stringify(blockText)}`);
       json.text = blockText.toDelta();
     }
     return json as DocBlock;
@@ -277,7 +279,7 @@ export default class YjsDoc extends EventCallbacks<NextEditorDocCallbacks> imple
   localUpdateBlockText(containerId: string, blockIndex: number, deltaOps: DocBlockTextActions): DocBlockText {
     const blocksData = this.getContainerBlocksMap(containerId);
     const blockData = blocksData.get(blockIndex);
-    assert(blockData, `no block data: ${blockIndex}`);
+    assert(logger, blockData, `no block data: ${blockIndex}`);
     const oldText = blockData.get('text') as unknown as Y.Text;
     oldText.applyDelta(deltaOps);
     return oldText.toDelta();
@@ -308,7 +310,7 @@ export default class YjsDoc extends EventCallbacks<NextEditorDocCallbacks> imple
         return value;
       }
       //
-      assert(Array.isArray(value), `invalid text type: ${JSON.stringify(value)}`);
+      assert(logger, Array.isArray(value), `invalid text type: ${JSON.stringify(value)}`);
       const text = new Y.Text();
       text.applyDelta(value);
       return text;
@@ -336,7 +338,7 @@ export default class YjsDoc extends EventCallbacks<NextEditorDocCallbacks> imple
 
   localInsertChildContainer(containerId: string, blocks: DocBlock[]): void {
     const allBlocksMap = this.getAllBlocksMap();
-    assert(!allBlocksMap.has(containerId), `child container has already exists: ${containerId}`);
+    assert(logger, !allBlocksMap.has(containerId), `child container has already exists: ${containerId}`);
     const blocksArray = new Y.Array<BlockDataType>();
     blocksArray.push(blocks.map((b) => this.blockDataToMap(b)));
     allBlocksMap.set(containerId, blocksArray);
@@ -345,7 +347,7 @@ export default class YjsDoc extends EventCallbacks<NextEditorDocCallbacks> imple
   localDeleteChildContainers(containerIds: string[]): void {
     const allBlocksMap = this.getAllBlocksMap();
     containerIds.forEach((containerId) => {
-      assert(allBlocksMap.has(containerId), `child container has already exists: ${containerId}`);
+      assert(logger, allBlocksMap.has(containerId), `child container has already exists: ${containerId}`);
       allBlocksMap.delete(containerId);
     });
   }
